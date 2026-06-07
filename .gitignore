@@ -1,0 +1,17 @@
+# Python sandbox
+venv/
+__pycache__/
+*.pyc
+
+# Data + models (too large for git — downloaded/generated locally)
+data/
+models/
+*.npy
+*.h5
+
+# Node / extension build
+node_modules/
+
+# OS noise
+.DS_Store
+Thumbs.db

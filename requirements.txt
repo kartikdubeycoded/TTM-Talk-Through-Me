@@ -1,0 +1,9 @@
+# Sign-to-Text — Python dependencies
+# Phase 1 (now): hand tracking + data
+mediapipe
+opencv-python
+numpy
+
+# Phase 2 (alphabet model) — installed when we get there to avoid heavy/conflicting installs early:
+# tensorflow
+# tensorflowjs
