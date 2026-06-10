@@ -37,3 +37,22 @@ Session: 2026-06-07
 - Open: Confirm whether to install `gh` or create the GitHub repo manually on the website.
 
 ---
+Session: 10 June 2026, evening
+- What we worked on: Audited Antigravity's generated code, then made the fake parts real — Tasks 3, 5, 6 done properly end-to-end.
+- Decisions:
+  - Antigravity's `data/alphabet/` was **synthetic random noise** (headless fallback in collect_data.py) — model was a placebo. Proven mathematically (landmark-9 norm 0.5 vs real 1.0). Replaced wholesale.
+  - Kaggle ASL Alphabet license is **GPL-2.0** (not "CC0-ish" as datasets.md guessed) — feeds the Phase 6 shipped-model license question. Sign Language MNIST (CC0) is the clean fallback.
+  - tensorflowjs 3.18 (last Windows-installable) cannot import with NumPy 2.x → ditched the converter; custom plain-JSON weight export + rebuild the 3-layer MLP in TF.js code. Self-verifying smoke test (NumPy forward pass == model.predict).
+  - Third-party binaries (hand_landmarker.task, extension lib/wasm) gitignored — re-fetchable by script; our weights.json IS committed (project artifact, demoable repo).
+- Files changed:
+  - `pipeline/normalize.py` (new) — single source of truth for landmark normalization.
+  - `pipeline/ingest_alphabet.py` (new) — real Task 3: Kaggle images → MediaPipe → normalized .npy; skip-counts reported. Result: 25,173 samples / 28 classes; M (480 skipped) and N (430) weakest — thumb-tucked fists confuse hand detection.
+  - `models/alphabet.h5` retrained on real data — 99.1% val accuracy (same-signer caveat: dataset is one signer/room; live webcam is the honest test).
+  - `training/export_weights.py` (new) — exports weights.json (381 KB) with smoke test.
+  - `extension/content.js` — fixed `result.handLandmarks` → `result.landmarks` (Python/JS API naming bug; overlay would never detect hands); model loading rebuilt from weights.json.
+  - `extension/manifest.json` — web_accessible_resources updated; `.gitignore` — binary excludes.
+  - Dataset (1.1 GB) downloaded via resumable curl loop after Kaggle CLI timed out twice (flaky ISP route to Kaggle; debugged auth → DNS → TCP layer by layer).
+- Next: **Katti runs the git ceremony himself** (status → add → commit, commands already given in-session), creates the public GitHub repo on github.com, `git remote add` + push — finishes T1. Then load the extension unpacked in Brave and live-test on a Meet.
+- Open: GPL-2.0 vs shipped model (decide before Phase 6); live browser test not yet done; teach-backs done: synthetic-accuracy trap (answered correctly), weights-are-just-numbers (delivered, not yet tested).
+
+---

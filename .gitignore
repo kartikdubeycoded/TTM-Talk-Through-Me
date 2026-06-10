@@ -12,6 +12,12 @@ models/
 # Node / extension build
 node_modules/
 
+# Downloaded third-party binaries (re-fetch: pipeline/download_extension_assets.py)
+hand_landmarker.task
+extension/lib/
+extension/wasm/
+extension/model/hand_landmarker.task
+
 # OS noise
 .DS_Store
 Thumbs.db

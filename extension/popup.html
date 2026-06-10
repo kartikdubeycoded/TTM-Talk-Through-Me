@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SignToText Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo-area">
+        <div class="logo-glow"></div>
+        <span class="logo-text">Sign<span class="gradient-text">ToText</span></span>
+      </div>
+      <div class="status-indicator">
+        <span id="status-pulse" class="pulse-dot idle"></span>
+        <span id="status-text" class="status-label">Idle</span>
+      </div>
+    </header>
+
+    <!-- Main Toggle Card -->
+    <div class="card glassmorphism main-toggle-card">
+      <div class="toggle-row">
+        <div>
+          <h3>Live Translation</h3>
+          <p class="subtext">Analyze webcam feed and display captions overlay</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="enable-toggle">
+          <span class="slider round"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Settings Card -->
+    <div class="card glassmorphism settings-card">
+      <h2>Configuration</h2>
+      
+      <!-- Threshold Slider -->
+      <div class="setting-item">
+        <div class="label-row">
+          <span>Confidence Threshold</span>
+          <span id="threshold-val" class="value-badge">90%</span>
+        </div>
+        <input type="range" id="threshold-slider" min="80" max="98" value="90">
+      </div>
+
+      <!-- Spacing Delay Slider -->
+      <div class="setting-item">
+        <div class="label-row">
+          <span>Word Spacing Delay</span>
+          <span id="delay-val" class="value-badge">750ms</span>
+        </div>
+        <input type="range" id="delay-slider" min="400" max="1500" step="50" value="750">
+      </div>
+
+      <!-- Chat Injection Toggle -->
+      <div class="toggle-row inline-toggle">
+        <div>
+          <h3>Inject to Meeting Chat</h3>
+          <p class="subtext">Experimental: Auto-posts captions into call chat</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="chat-toggle">
+          <span class="slider round"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Running 100% locally on device</span>
+      <span class="privacy-bullet">•</span>
+      <span>Privacy Secured</span>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

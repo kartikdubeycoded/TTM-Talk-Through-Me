@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "SignToText",
+  "version": "1.0",
+  "description": "Live sign language to text translator. Injects a gorgeous floating overlay directly onto Google Meet and video calls.",
+  "permissions": [
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://meet.google.com/*",
+        "*://*.zoom.us/*",
+        "*://teams.microsoft.com/*",
+        "*://teams.live.com/*"
+      ],
+      "js": [
+        "lib/tf.min.js",
+        "content.js"
+      ],
+      "css": [
+        "overlay.css"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "lib/vision_bundle.js",
+        "model/weights.json",
+        "model/hand_landmarker.task",
+        "wasm/vision_wasm_internal.js",
+        "wasm/vision_wasm_internal.wasm"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
