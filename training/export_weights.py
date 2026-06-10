@@ -17,6 +17,7 @@ import tensorflow as tf
 MODEL_PATH = os.path.join("models", "alphabet.h5")
 LABELS_PATH = os.path.join("models", "labels.json")
 EXPORT_PATH = os.path.join("extension", "model", "weights.json")
+FIXTURE_PATH = os.path.join("tests", "fixtures", "model_io.json")
 
 
 def numpy_forward(layers, x):
@@ -62,6 +63,13 @@ def main():
     size_kb = os.path.getsize(EXPORT_PATH) / 1024
     print(f"Exported {len(layers)} dense layers + {len(labels)} labels "
           f"to {EXPORT_PATH} ({size_kb:.0f} KB)")
+
+    # Fixture for the JS-side smoke test (tests/smoke_model.cjs): known
+    # inputs + the Keras model's outputs as ground truth.
+    os.makedirs(os.path.dirname(FIXTURE_PATH), exist_ok=True)
+    with open(FIXTURE_PATH, "w") as f:
+        json.dump({"inputs": x.tolist(), "expected": expected.tolist()}, f)
+    print(f"JS smoke-test fixture written to {FIXTURE_PATH}")
 
 
 if __name__ == "__main__":
