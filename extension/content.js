@@ -121,6 +121,15 @@ function stopSignToText() {
 // ---- Prediction stream -> letters -> words ----
 
 function handleFrame(frame) {
+  // Live feedback: always show the model's best guess, even below the
+  // lock-in threshold — so a near-miss looks different from a blank stare.
+  const guessEl = document.getElementById("s2t-guess");
+  if (guessEl) {
+    guessEl.textContent = frame.handPresent
+      ? `${frame.label} ${Math.round(frame.confidence * 100)}%`
+      : "—";
+  }
+
   if (!frame.handPresent) {
     updateStatusUI("No Hands", "lost");
     // Hand dropped: a pause boundary for word spacing
@@ -236,6 +245,10 @@ function createOverlayDOM() {
       <div class="s2t-label">Word Buffer</div>
       <div class="s2t-buffer-container">
         <span class="s2t-buffer-text" id="s2t-buffer-text">-</span>
+      </div>
+      <div class="s2t-label">Model sees (live)</div>
+      <div class="s2t-buffer-container">
+        <span class="s2t-buffer-text" id="s2t-guess" style="opacity:0.75">&mdash;</span>
       </div>
     </div>
     <div class="s2t-footer">

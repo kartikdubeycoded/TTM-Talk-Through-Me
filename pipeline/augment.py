@@ -35,6 +35,32 @@ def rotate(samples, max_degrees, rng):
     return pts.reshape(n, 63)
 
 
+def rotate_3d(samples, max_degrees_y, max_degrees_x, rng):
+    """Rotate each sample out of the camera plane — around the vertical (y)
+    axis and the horizontal (x) axis. Simulates the camera seeing the same
+    handshape from the side / above. This is the main weapon against a
+    single-viewpoint training set.
+    """
+    n = samples.shape[0]
+    pts = samples.reshape(n, 21, 3).copy()
+
+    # Around y axis: x/z mix (camera shifted sideways)
+    ay = np.radians(rng.uniform(-max_degrees_y, max_degrees_y, size=n))
+    cos_y, sin_y = np.cos(ay), np.sin(ay)
+    x, z = pts[:, :, 0].copy(), pts[:, :, 2].copy()
+    pts[:, :, 0] = cos_y[:, None] * x + sin_y[:, None] * z
+    pts[:, :, 2] = -sin_y[:, None] * x + cos_y[:, None] * z
+
+    # Around x axis: y/z mix (camera shifted up/down)
+    ax = np.radians(rng.uniform(-max_degrees_x, max_degrees_x, size=n))
+    cos_x, sin_x = np.cos(ax), np.sin(ax)
+    y, z = pts[:, :, 1].copy(), pts[:, :, 2].copy()
+    pts[:, :, 1] = cos_x[:, None] * y - sin_x[:, None] * z
+    pts[:, :, 2] = sin_x[:, None] * y + cos_x[:, None] * z
+
+    return pts.reshape(n, 63)
+
+
 def jitter(samples, sigma, rng):
     """Add small gaussian noise — simulates landmark detection wobble."""
     return samples + rng.normal(0, sigma, size=samples.shape).astype(np.float32)
@@ -63,6 +89,8 @@ def augment_training_set(X, y, seed):
         mirror(X),
         renormalize(rotate(X, max_degrees=15, rng=rng)),
         renormalize(jitter(X, sigma=0.02, rng=rng)),
+        rotate_3d(X, max_degrees_y=30, max_degrees_x=20, rng=rng),
+        rotate_3d(mirror(X), max_degrees_y=30, max_degrees_x=20, rng=rng),
     ]
     X_aug = np.vstack(variants).astype(np.float32)
     y_aug = np.concatenate([y] * len(variants))

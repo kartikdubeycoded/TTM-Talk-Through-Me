@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "pipeline"))
 from augment import (
     mirror,
     rotate,
+    rotate_3d,
     jitter,
     renormalize,
     augment_training_set,
@@ -62,6 +63,35 @@ def test_rotation_preserves_distances(samples):
     assert not np.allclose(out, samples)
 
 
+def test_rotate3d_preserves_distances(samples):
+    rng = np.random.default_rng(0)
+    out = rotate_3d(samples, max_degrees_y=30, max_degrees_x=20, rng=rng)
+    # Rigid 3D rotation: every landmark keeps its distance from the wrist
+    assert np.allclose(
+        np.linalg.norm(out.reshape(-1, 21, 3), axis=2),
+        np.linalg.norm(samples.reshape(-1, 21, 3), axis=2),
+        atol=1e-5,
+    )
+    assert not np.allclose(out, samples)
+
+
+def test_rotate3d_mixes_depth(samples):
+    # Rotation around the vertical (y) axis must move x into z —
+    # the whole point: simulating a camera shifted to the side.
+    rng = np.random.default_rng(1)
+    out = rotate_3d(samples, max_degrees_y=30, max_degrees_x=0, rng=rng)
+    z_in = samples.reshape(-1, 21, 3)[:, :, 2]
+    z_out = out.reshape(-1, 21, 3)[:, :, 2]
+    assert not np.allclose(z_in, z_out, atol=1e-4)
+
+
+def test_rotate3d_keeps_invariants(samples):
+    rng = np.random.default_rng(2)
+    out = rotate_3d(samples, max_degrees_y=30, max_degrees_x=20, rng=rng)
+    assert np.allclose(lm(out, 0), 0.0, atol=1e-6)          # wrist stays anchored
+    assert np.allclose(np.linalg.norm(lm(out, 9), axis=1), 1.0, atol=1e-5)
+
+
 def test_jitter_changes_data_but_stays_small(samples):
     rng = np.random.default_rng(0)
     out = jitter(samples, sigma=0.02, rng=rng)
@@ -77,10 +107,10 @@ def test_renormalize_restores_invariants(samples):
     assert np.allclose(np.linalg.norm(lm(out, 9), axis=1), 1.0, atol=1e-5)
 
 
-def test_augment_at_least_triples_data(samples):
+def test_augment_at_least_sextuples_data(samples):
     y = np.arange(10) % 2
     X_aug, y_aug = augment_training_set(samples, y, seed=42)
-    assert X_aug.shape[0] >= 3 * samples.shape[0]
+    assert X_aug.shape[0] >= 6 * samples.shape[0]
     assert X_aug.shape[1] == 63
     assert y_aug.shape[0] == X_aug.shape[0]
 
