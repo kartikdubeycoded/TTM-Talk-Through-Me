@@ -4,8 +4,12 @@
   "version": "1.0",
   "description": "Live sign language to text translator. Injects a gorgeous floating overlay directly onto Google Meet and video calls.",
   "permissions": [
-    "storage"
+    "storage",
+    "offscreen"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "background": {
     "service_worker": "background.js"
   },
@@ -21,7 +25,6 @@
         "*://teams.live.com/*"
       ],
       "js": [
-        "lib/tf.min.js",
         "content.js"
       ],
       "css": [
@@ -30,16 +33,5 @@
       "run_at": "document_end"
     }
   ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "lib/vision_bundle.js",
-        "model/weights.json",
-        "model/hand_landmarker.task",
-        "wasm/vision_wasm_internal.js",
-        "wasm/vision_wasm_internal.wasm"
-      ],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  "web_accessible_resources": []
 }

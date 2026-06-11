@@ -6,7 +6,11 @@ ASSETS = {
     "extension/lib/tf.min.js": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js",
     "extension/lib/vision_bundle.js": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.mjs",
     "extension/wasm/vision_wasm_internal.js": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm/vision_wasm_internal.js",
-    "extension/wasm/vision_wasm_internal.wasm": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm/vision_wasm_internal.wasm"
+    "extension/wasm/vision_wasm_internal.wasm": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm/vision_wasm_internal.wasm",
+    # no-SIMD fallback: Brave hides CPU features for fingerprint protection,
+    # so MediaPipe requests this variant there. Without it: instant Init Failed.
+    "extension/wasm/vision_wasm_nosimd_internal.js": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm/vision_wasm_nosimd_internal.js",
+    "extension/wasm/vision_wasm_nosimd_internal.wasm": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm/vision_wasm_nosimd_internal.wasm"
 }
 
 def download_assets():

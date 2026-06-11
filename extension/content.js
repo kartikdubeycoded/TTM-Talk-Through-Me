@@ -1,20 +1,14 @@
-// content.js - SignToText Captions Overlay Engine
+// content.js - SignToText captions overlay (UI only).
+//
+// All heavy machinery (webcam, MediaPipe, TF.js) runs in the extension's
+// offscreen document — MediaPipe's WASM cannot load inside a content
+// script (isolated world + page CSP). This script just renders the
+// overlay and turns the incoming prediction stream into sentences.
 
 let extensionEnabled = false;
 let chatInjectionEnabled = false;
 let confidenceThreshold = 0.90;
 let spacingDelay = 750;
-
-let visionModule = null;
-let landmarker = null;
-let tfModel = null;
-let labelMap = [];
-
-let webcamStream = null;
-let videoElement = null;
-let canvasElement = null;
-let canvasCtx = null;
-let trackingLoopActive = false;
 
 // UI Elements
 let overlayElement = null;
@@ -23,21 +17,20 @@ let bufferText = null;
 let sentenceContainer = null;
 let sentencePlaceholder = null;
 
-// NLP / Sentence States
+// Sentence states
 let currentSentence = "";
 let currentWordBuffer = "";
-let lastPredictedIndex = -1;
+let lastPredictedLabel = null;
 let sameFrameCount = 0;
-const LOCK_IN_FRAMES = 5; // Lock-in a letter after 5 consecutive matching frames
+const LOCK_IN_FRAMES = 5; // lock a letter after 5 consecutive matching frames
 
-// Temporal Spacing States
+// Temporal spacing states
 let lastPredictionTime = 0;
-let lastWristPosition = null;
-let wristVelocityRolling = 0;
-const VELOCITY_SPACE_THRESHOLD = 0.005; // Wrist movement near zero
+const VELOCITY_SPACE_THRESHOLD = 0.005;
 
-// Listen for messages from background/popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+// ---- Messages from background (settings + prediction stream) ----
+
+chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "settingsChanged") {
     const changes = request.changes;
     if (changes.extensionEnabled) {
@@ -52,6 +45,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (changes.spacingDelay) {
       spacingDelay = changes.spacingDelay.newValue;
     }
+    return;
+  }
+
+  if (!extensionEnabled || !overlayElement) return;
+
+  if (request.type === "s2tStatus") {
+    if (request.status === "ready") {
+      updateStatusUI("Ready", "lost");
+    } else if (request.status === "error") {
+      updateStatusUI("Init Failed", "lost");
+      showErrorMessage(
+        request.code === "camera-denied"
+          ? "Camera permission needed — see the tab that just opened."
+          : request.message || "Failed to start camera or models."
+      );
+    }
+    return;
+  }
+
+  if (request.type === "s2tFrame") {
+    handleFrame(request);
   }
 });
 
@@ -67,6 +81,8 @@ chrome.storage.local.get([
   confidenceThreshold = data.detectionThreshold || 0.90;
   spacingDelay = data.spacingDelay || 750;
 
+  console.log("[SignToText] content script loaded. enabled=", extensionEnabled);
+
   if (extensionEnabled) {
     initSignToText();
   }
@@ -81,222 +97,60 @@ function handleStateToggle(enabled) {
   }
 }
 
-async function initSignToText() {
-  if (overlayElement) return; // Already running
+function initSignToText() {
+  if (overlayElement) return; // already running
 
   createOverlayDOM();
   updateStatusUI("Initializing...", "lost");
 
-  try {
-    // 1. Dynamically import MediaPipe Vision module
-    if (!visionModule) {
-      const visionPath = chrome.runtime.getURL("lib/vision_bundle.js");
-      visionModule = await import(visionPath);
-    }
-
-    // 2. Initialize MediaPipe Hand Landmarker
-    if (!landmarker) {
-      const wasmPath = chrome.runtime.getURL("wasm");
-      const vision = await visionModule.FilesetResolver.forVisionTasks(wasmPath);
-      
-      const modelPath = chrome.runtime.getURL("model/hand_landmarker.task");
-      landmarker = await visionModule.HandLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: modelPath,
-          delegate: "GPU"
-        },
-        runningMode: "VIDEO",
-        numHands: 1
-      });
-    }
-
-    // 3. Build TFJS model from exported weights
-    // (plain-JSON export — see training/export_weights.py for why we
-    // don't use the tensorflowjs converter format)
-    if (!tfModel) {
-      const weightsPath = chrome.runtime.getURL("model/weights.json");
-      const weightsResponse = await fetch(weightsPath);
-      const spec = await weightsResponse.json();
-
-      tfModel = tf.sequential();
-      spec.layers.forEach((layer, i) => {
-        tfModel.add(tf.layers.dense({
-          units: layer.units,
-          activation: layer.activation,
-          inputShape: i === 0 ? [spec.inputSize] : undefined
-        }));
-      });
-      tfModel.setWeights(
-        spec.layers.flatMap(l => [tf.tensor2d(l.kernel), tf.tensor1d(l.bias)])
-      );
-
-      labelMap = spec.labels;
-      console.log("Loaded alphabet vocabulary:", labelMap);
-    }
-
-    // 4. Initialize Webcam
-    videoElement = document.createElement("video");
-    videoElement.style.display = "none";
-    document.body.appendChild(videoElement);
-
-    canvasElement = document.createElement("canvas");
-    canvasCtx = canvasElement.getContext("2d");
-
-    webcamStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 640, height: 480, frameRate: { ideal: 30 } }
-    });
-    
-    videoElement.srcObject = webcamStream;
-    videoElement.play();
-
-    videoElement.onloadedmetadata = () => {
-      canvasElement.width = videoElement.videoWidth;
-      canvasElement.height = videoElement.videoHeight;
-      startTrackingLoop();
-    };
-
-  } catch (err) {
-    console.error("SignToText Initialization Error:", err);
-    updateStatusUI("Init Failed", "lost");
-    showErrorMessage(err.message || "Failed to start camera or models.");
-  }
+  // The offscreen document does the actual init; ask background for it
+  chrome.runtime.sendMessage({ type: "s2tEnsureOffscreen" }).catch(() => {});
 }
 
 function stopSignToText() {
-  trackingLoopActive = false;
-  
-  if (webcamStream) {
-    webcamStream.getTracks().forEach(track => track.stop());
-    webcamStream = null;
-  }
-  
-  if (videoElement) {
-    videoElement.remove();
-    videoElement = null;
-  }
-
   if (overlayElement) {
     overlayElement.remove();
     overlayElement = null;
   }
-
-  // Clear states
   currentSentence = "";
   currentWordBuffer = "";
-  lastPredictedIndex = -1;
+  lastPredictedLabel = null;
   sameFrameCount = 0;
-  lastWristPosition = null;
 }
 
-function startTrackingLoop() {
-  trackingLoopActive = true;
-  updateStatusUI("Ready", "lost");
-  requestAnimationFrame(processFrame);
-}
+// ---- Prediction stream -> letters -> words ----
 
-async function processFrame() {
-  if (!trackingLoopActive) return;
-
-  if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
-    // Draw current webcam frame onto hidden canvas
-    canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-    const imageData = canvasCtx.getImageData(0, 0, canvasElement.width, canvasElement.height);
-    
-    // Pass image data to MediaPipe HandLandmarker
-    const startTimeMs = performance.now();
-    const result = landmarker.detectForVideo(imageData, startTimeMs);
-
-    // NOTE: the JS tasks-vision API names this `landmarks`
-    // (the Python API calls it `hand_landmarks`)
-    if (result.landmarks && result.landmarks.length > 0) {
-      updateStatusUI("Tracking", "tracking");
-
-      const handLms = result.landmarks[0];
-      const normLms = getNormalizedLandmarks(handLms);
-      
-      // Track wrist velocity (displacement)
-      trackWristVelocity(handLms[0]);
-
-      // Run inference
-      runInference(normLms);
-    } else {
-      updateStatusUI("No Hands", "lost");
-      // Handle hand-loss spacing boundary
-      handleHandLossSpacing();
+function handleFrame(frame) {
+  if (!frame.handPresent) {
+    updateStatusUI("No Hands", "lost");
+    // Hand dropped: a pause boundary for word spacing
+    if (currentWordBuffer.length > 0 &&
+        Date.now() - lastPredictionTime >= spacingDelay) {
+      commitWord();
     }
-  }
-
-  requestAnimationFrame(processFrame);
-}
-
-function trackWristVelocity(wrist) {
-  if (lastWristPosition) {
-    const dist = Math.sqrt(
-      Math.pow(wrist.x - lastWristPosition.x, 2) +
-      Math.pow(wrist.y - lastWristPosition.y, 2) +
-      Math.pow(wrist.z - lastWristPosition.z, 2)
-    );
-    // Smooth velocity with rolling average
-    wristVelocityRolling = (wristVelocityRolling * 0.7) + (dist * 0.3);
-  }
-  lastWristPosition = { x: wrist.x, y: wrist.y, z: wrist.z };
-}
-
-function getNormalizedLandmarks(landmarks) {
-  const wrist = landmarks[0];
-  const mcp_9 = landmarks[9];
-  const scale = Math.sqrt(
-    Math.pow(mcp_9.x - wrist.x, 2) +
-    Math.pow(mcp_9.y - wrist.y, 2) +
-    Math.pow(mcp_9.z - wrist.z, 2)
-  );
-  
-  const factor = scale === 0 ? 1e-6 : scale;
-  const normalized = [];
-  
-  for (const lm of landmarks) {
-    normalized.push(
-      (lm.x - wrist.x) / factor,
-      (lm.y - wrist.y) / factor,
-      (lm.z - wrist.z) / factor
-    );
-  }
-  return normalized;
-}
-
-function runInference(normLms) {
-  tf.tidy(() => {
-    const tensor = tf.tensor2d([normLms]);
-    const predictions = tfModel.predict(tensor);
-    const scores = predictions.dataSync();
-    
-    const maxIdx = predictions.argMax(-1).dataSync()[0];
-    const confidence = scores[maxIdx];
-
-    if (confidence >= confidenceThreshold) {
-      if (maxIdx === lastPredictedIndex) {
-        sameFrameCount++;
-        if (sameFrameCount === LOCK_IN_FRAMES) {
-          // Lock-in predicted class
-          const character = labelMap[maxIdx];
-          handleLockedPrediction(character);
-        }
-      } else {
-        lastPredictedIndex = maxIdx;
-        sameFrameCount = 0;
-      }
-    }
-  });
-}
-
-function handleLockedPrediction(character) {
-  const now = Date.now();
-  
-  // Debounce to prevent multiple character logs from a single hold
-  if (now - lastPredictionTime < 1200) {
     return;
   }
-  
+
+  updateStatusUI("Tracking", "tracking");
+
+  if (frame.confidence < confidenceThreshold) return;
+
+  if (frame.label === lastPredictedLabel) {
+    sameFrameCount++;
+    if (sameFrameCount === LOCK_IN_FRAMES) {
+      handleLockedPrediction(frame.label, frame.wristVelocity);
+    }
+  } else {
+    lastPredictedLabel = frame.label;
+    sameFrameCount = 0;
+  }
+}
+
+function handleLockedPrediction(character, wristVelocity) {
+  const now = Date.now();
+
+  // Debounce: one character per hold, not a stream
+  if (now - lastPredictionTime < 1200) return;
   lastPredictionTime = now;
 
   if (character === "SPACE") {
@@ -304,12 +158,11 @@ function handleLockedPrediction(character) {
   } else if (character === "DELETE") {
     handleBackspace();
   } else {
-    // Append to current word buffer
     currentWordBuffer += character;
     updateUIBuffer(currentWordBuffer);
-    
-    // Auto-spacing check: if hand is stationary after signing a letter
-    if (wristVelocityRolling < VELOCITY_SPACE_THRESHOLD) {
+
+    // Auto-spacing: stationary hand after a letter ends the word
+    if (wristVelocity < VELOCITY_SPACE_THRESHOLD) {
       setTimeout(() => {
         if (Date.now() - lastPredictionTime >= spacingDelay && currentWordBuffer.length > 0) {
           commitWord();
@@ -319,21 +172,15 @@ function handleLockedPrediction(character) {
   }
 }
 
-function handleHandLossSpacing() {
-  if (currentWordBuffer.length > 0 && Date.now() - lastPredictionTime >= spacingDelay) {
-    commitWord();
-  }
-}
-
 function commitWord() {
   if (currentWordBuffer.length === 0) return;
-  
+
   currentSentence += (currentSentence.length > 0 ? " " : "") + currentWordBuffer;
   currentWordBuffer = "";
-  
+
   updateUISentence(currentSentence);
   updateUIBuffer("");
-  
+
   if (chatInjectionEnabled) {
     injectIntoChat(currentSentence);
   }
@@ -350,7 +197,6 @@ function handleBackspace() {
     currentWordBuffer = currentWordBuffer.slice(0, -1);
     updateUIBuffer(currentWordBuffer);
   } else if (currentSentence.length > 0) {
-    // Backspace last word in sentence
     const words = currentSentence.trim().split(" ");
     words.pop();
     currentSentence = words.join(" ");
@@ -369,7 +215,8 @@ function injectIntoChat(text) {
   }
 }
 
-// UI Rendering Functions
+// ---- UI rendering ----
+
 function createOverlayDOM() {
   overlayElement = document.createElement("div");
   overlayElement.id = "signtotext-overlay";
@@ -404,7 +251,6 @@ function createOverlayDOM() {
   sentenceContainer = document.getElementById("s2t-sentence-container");
   sentencePlaceholder = document.getElementById("s2t-placeholder");
 
-  // Wire clear/backspace buttons
   document.getElementById("s2t-clear-btn").addEventListener("click", () => {
     currentSentence = "";
     currentWordBuffer = "";
@@ -443,6 +289,10 @@ function updateUISentence(text) {
 
 function showErrorMessage(message) {
   if (sentenceContainer) {
-    sentenceContainer.innerHTML = `<span style="color: #ef4444; font-size: 13px;">Error: ${message}</span>`;
+    sentenceContainer.innerHTML = "";
+    const span = document.createElement("span");
+    span.style.cssText = "color: #ef4444; font-size: 13px;";
+    span.textContent = `Error: ${message}`;
+    sentenceContainer.appendChild(span);
   }
 }

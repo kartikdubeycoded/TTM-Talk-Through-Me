@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<!-- Invisible extension page that hosts the heavy machinery: webcam,
+     MediaPipe hand tracking, and the TF.js classifier. Content scripts
+     can't run MediaPipe's WASM (isolated world + page CSP), but this
+     extension-origin page can. Predictions stream out via messages. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <script type="module" src="offscreen.js"></script>
+</head>
+<body></body>
+</html>
