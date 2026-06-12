@@ -3,7 +3,7 @@
 // extension; background.js relays them to content scripts.
 
 import { FilesetResolver, HandLandmarker } from "./lib/vision_bundle.js";
-import { createClassifier, argmax } from "./inference.js";
+import { createClassifier, createSequenceClassifier, argmax } from "./inference.js";
 
 const FRAME_INTERVAL_MS = 50; // ~20 fps analysis
 
@@ -13,6 +13,17 @@ let labelMap = [];
 let videoElement = null;
 let lastWristPosition = null;
 let wristVelocityRolling = 0;
+
+// Word model: rolling buffer of the last WORD_FRAMES analyzed frames.
+// Features per frame match pipeline/word_features.py: 63 normalized
+// landmarks + wrist trajectory relative to the buffer's first frame.
+const WORD_FRAMES = 30;
+const WORD_EVERY_N_FRAMES = 8; // LSTM is heavier — run at ~2.5 Hz, not 20
+let classifyWords = null;
+let wordLabels = [];
+let frameBuffer = [];   // { norm: number[63], wrist: {x,y,z} }
+let frameCounter = 0;
+let lastWordResult = null;
 
 function send(payload) {
   chrome.runtime.sendMessage(payload).catch(() => {});
@@ -80,6 +91,17 @@ async function init() {
     classify = createClassifier(spec);
     labelMap = spec.labels;
 
+    // 2b. Word LSTM (optional — extension still works letters-only if absent)
+    try {
+      const wResp = await fetch(chrome.runtime.getURL("model/words.json"));
+      const wSpec = await wResp.json();
+      classifyWords = createSequenceClassifier(wSpec);
+      wordLabels = wSpec.labels;
+      console.log(`[SignToText] word model loaded: ${wordLabels.length} words`);
+    } catch (e) {
+      console.warn("[SignToText] no word model bundled, letters only:", e);
+    }
+
     // 3. Camera
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width: 640, height: 480, frameRate: { ideal: 30 } }
@@ -106,6 +128,8 @@ function processFrame() {
 
   if (!result.landmarks || result.landmarks.length === 0) {
     lastWristPosition = null;
+    frameBuffer = [];        // a word sign can't span a hand-loss gap
+    lastWordResult = null;
     send({ type: "s2tFrame", handPresent: false });
     return;
   }
@@ -117,12 +141,33 @@ function processFrame() {
   const scores = classify(normLms);
   const maxIdx = argmax(scores);
 
+  // Word model: feed the rolling buffer, infer every Nth frame once full
+  frameBuffer.push({
+    norm: normLms,
+    wrist: { x: handLms[0].x, y: handLms[0].y, z: handLms[0].z }
+  });
+  if (frameBuffer.length > WORD_FRAMES) frameBuffer.shift();
+  frameCounter++;
+
+  if (classifyWords && frameBuffer.length === WORD_FRAMES &&
+      frameCounter % WORD_EVERY_N_FRAMES === 0) {
+    const w0 = frameBuffer[0].wrist;
+    const seq = frameBuffer.map(f => [
+      ...f.norm, f.wrist.x - w0.x, f.wrist.y - w0.y, f.wrist.z - w0.z
+    ]);
+    const wScores = classifyWords(seq);
+    const wIdx = argmax(wScores);
+    lastWordResult = { label: wordLabels[wIdx], confidence: wScores[wIdx] };
+  }
+
   send({
     type: "s2tFrame",
     handPresent: true,
     label: labelMap[maxIdx],
     confidence: scores[maxIdx],
-    wristVelocity: wristVelocityRolling
+    wristVelocity: wristVelocityRolling,
+    word: lastWordResult ? lastWordResult.label : null,
+    wordConfidence: lastWordResult ? lastWordResult.confidence : 0
   });
 }
 

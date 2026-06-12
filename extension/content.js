@@ -28,6 +28,14 @@ const LOCK_IN_FRAMES = 5; // lock a letter after 5 consecutive matching frames
 let lastPredictionTime = 0;
 const VELOCITY_SPACE_THRESHOLD = 0.005;
 
+// Word-sign states: a word commits after two consecutive agreeing
+// inferences above threshold, then a cooldown so one sign = one word
+const WORD_CONFIDENCE = 0.85;
+const WORD_COOLDOWN_MS = 2500;
+let wordCandidate = null;
+let wordAgreeCount = 0;
+let lastWordTime = 0;
+
 // ---- Messages from background (settings + prediction stream) ----
 
 chrome.runtime.onMessage.addListener((request) => {
@@ -125,12 +133,20 @@ function handleFrame(frame) {
   // lock-in threshold — so a near-miss looks different from a blank stare.
   const guessEl = document.getElementById("s2t-guess");
   if (guessEl) {
-    guessEl.textContent = frame.handPresent
-      ? `${frame.label} ${Math.round(frame.confidence * 100)}%`
-      : "—";
+    if (frame.handPresent) {
+      const letter = `${frame.label} ${Math.round(frame.confidence * 100)}%`;
+      const word = frame.word
+        ? ` · ${frame.word} ${Math.round(frame.wordConfidence * 100)}%`
+        : "";
+      guessEl.textContent = letter + word;
+    } else {
+      guessEl.textContent = "—";
+    }
   }
 
   if (!frame.handPresent) {
+    wordCandidate = null;
+    wordAgreeCount = 0;
     updateStatusUI("No Hands", "lost");
     // Hand dropped: a pause boundary for word spacing
     if (currentWordBuffer.length > 0 &&
@@ -141,6 +157,19 @@ function handleFrame(frame) {
   }
 
   updateStatusUI("Tracking", "tracking");
+
+  // Whole-word signs take precedence over fingerspelling
+  if (frame.word && frame.wordConfidence >= WORD_CONFIDENCE) {
+    if (frame.word === wordCandidate) {
+      wordAgreeCount++;
+    } else {
+      wordCandidate = frame.word;
+      wordAgreeCount = 1;
+    }
+    if (wordAgreeCount >= 2 && Date.now() - lastWordTime >= WORD_COOLDOWN_MS) {
+      commitWordSign(frame.word);
+    }
+  }
 
   if (frame.confidence < confidenceThreshold) return;
 
@@ -178,6 +207,21 @@ function handleLockedPrediction(character, wristVelocity) {
         }
       }, spacingDelay);
     }
+  }
+}
+
+// A recognized whole-word sign: replaces any half-spelled letter buffer
+// (the signing motion usually litters it with stray letters)
+function commitWordSign(word) {
+  currentWordBuffer = "";
+  updateUIBuffer("");
+  currentSentence += (currentSentence.length > 0 ? " " : "") + word.toUpperCase();
+  updateUISentence(currentSentence);
+  lastWordTime = Date.now();
+  wordCandidate = null;
+  wordAgreeCount = 0;
+  if (chatInjectionEnabled) {
+    injectIntoChat(currentSentence);
   }
 }
 
