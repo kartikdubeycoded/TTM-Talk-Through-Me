@@ -28,11 +28,19 @@ HAND_SLICE = slice(40, 61)
 N_FRAMES = 30
 MIN_HAND_FRAMES = 8
 
+# Vocabulary honesty floor (T16): we only ship words the model can actually
+# read on UNSEEN signers — a word recognized 15% of the time injects garbage
+# into the sentence stream. Floor = 0.5 held-out per-word accuracy.
+# Dropped below the floor (2026-06-26, after the T15 wrist-location feature):
+#   go  0.15  — a directional point; meaning is in the pointing direction, not
+#               the handshape, so a single-hand landmark model can't read it.
+# Borderline-but-kept (0.58–0.65): finish, look, thankyou, night, drink, mad,
+#   fine, bad — usable behind the live lock-in gate; revisit if they hurt.
 VOCAB = [
     "hello", "bye", "yes", "no", "please", "thankyou", "fine", "bad",
     "happy", "sad", "mad", "hungry", "thirsty", "sick", "sleepy", "water",
     "food", "drink", "milk", "mom", "dad", "who", "where", "why", "now",
-    "later", "tomorrow", "night", "morning", "home", "finish", "can", "go",
+    "later", "tomorrow", "night", "morning", "home", "finish", "can",
     "wait", "look", "listen", "talk", "think", "like", "have",
 ]
 
