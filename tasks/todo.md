@@ -1,58 +1,54 @@
 ---
 name: todo
-description: Flat, checkable task list for Sign-to-Text. Full detail (acceptance criteria, verification, files) lives in [[plan]].
+description: Flat, checkable task list for Sign-to-Text / TTM. Phases 1–5 shipped; remaining work targets readable sentences from trustworthy letters + words. Full detail in [[plan]].
 type: reference
-status: approved — in progress (T1)
-last-updated: 2026-06-08
+status: refreshed 2026-06-26 — Phases 1–5 done, working Phase 5b→6
+last-updated: 2026-06-26
 ---
 
-# Sign-to-Text — TODO
+# Sign-to-Text / TTM — TODO
 
 Smallest working thing first. Don't start a phase until the previous one runs.
-Full acceptance criteria + verification for each task: [[plan]].
+Full acceptance criteria + verification: [[plan]].
 
-## Phase 1: Foundation
-- [~] **T1** Sandbox + public repo — venv ✅, deps ✅, scaffold ✅ · **git init + commit + GitHub remote remaining** — S
-- [ ] **T2** "See the dots": webcam → MediaPipe → 21 landmarks on screen (Python) — S
-- [ ] **Checkpoint:** repo backed up, live tracking works, teach-back on landmarks. **Human review.**
+## DONE — Phases 1–5 (T1–T14)
+- [x] **Phase 1** Foundation — public repo `TTM-Talk-Through-Me`, live landmark tracking
+- [x] **Phase 2** Alphabet model — **93.6%** held-out signer; real + synthetic data; 3D-rotation aug
+- [x] **Phase 3** Extension MVP — offscreen-document architecture; plain-JS inference (no TF.js)
+- [x] **Phase 4** On the call — live overlay + health dot; lock-in gate, debounce, velocity spacing
+- [x] **Phase 5** Word signs — **76.1%** held-out; 40-word vocab; LSTM verified to 2e-6; wired live
 
-## Phase 2: Alphabet data + model (easy ML)
-- [ ] **T3** Ingest Kaggle ASL Alphabet → MediaPipe landmarks + normalise (A–Z) — M
-- [ ] **T4** Augmentation pipeline (jitter, mirror, rotate) — S
-- [ ] **T5** Train alphabet classifier; validate on held-out hands — M
-- [ ] **T6** Export model to TensorFlow.js — S
-- [ ] **Checkpoint:** honest held-out accuracy, model loads in JS, teach-back on overfitting. **Human review.**
+## Phase 5b: Make words trustworthy
+- [x] **T15** Positional feature (abs. wrist x,y) — dad 0.48→0.89, fine 0.26→0.64, held-out 76.1→78.6%. Option A worked; B (face landmarks) not needed. Commit `053be30`.
+- [x] **T16** Vocabulary honesty pass — floor 0.5, dropped `go` (0.15), 39 words → **79.4%** held-out. Lowest survivor `fine` 0.51. Commit `dec7f1a`.
+- [~] **Checkpoint:** shipped vocab all above floor ✅; **teach-back + human review PENDING** before Phase 5c.
 
-## Phase 3: Extension MVP (alphabet)
-- [ ] **T7** Manifest V3 scaffold (popup, background, bundled assets) — M
-- [ ] **T8** Webcam + MediaPipe tracking inside the extension — M
-- [ ] **T9** Load TFJS model + predict letters in the browser — M
-- [ ] **Checkpoint:** first shippable demo (spells from webcam), teach-back on Python→browser. **Human review.**
+## Phase 5c: Readable sentences
+- [ ] **T17** Sentence assembler — capitalization, punctuation, sentence boundaries, autocorrect — M
+- [ ] **T18** Fusion tuning — letters ↔ words don't fight; precedence explicit + tunable — M
+- [ ] **Checkpoint:** clean fused sentences; teach-back on precedence + pause→punctuation rules. **Human review.**
 
-## Phase 4: On the call
-- [ ] **T10** Overlay panel on Google Meet + tracking-health dot — M
-- [ ] **T11** Sentence builder (lock-in gate, pause spacing, autocorrect, correction) — M
-- [ ] **Checkpoint:** live spaced correctable captions on a real Meet, teach-back on debouncing. **Human review.**
+## Phase 5d: Honest combined live test
+- [ ] **T19** End-to-end live test on real Meet — Katti runs + logs honest per-letter/per-word hit rates — S
+- [ ] **Checkpoint:** readable reading experience live. **Human review: good enough for v1 demo?**
 
-## Phase 5: Word-level signs (hard ML)
-- [ ] **T12** Ingest Google `asl-signs` landmark data (250 words) → ~20–50 word subset — M
-- [ ] **T13** Train + export the word-level LSTM — M
-- [ ] **T14** Integrate word recognition into the extension — M
-- [ ] **Checkpoint:** whole-word signing works on a real call, teach-back on temporal models. **Human review.**
-
-## Phase 6: Polish + publish
-- [ ] **T15** Settings + optional (default-off) chat-injection toggle — M
-- [ ] **T16** README + privacy note + Chrome Web Store publish — M
-- [ ] **Checkpoint:** public extension installable; final full-pipeline teach-back.
+## Phase 6: Polish + publish (finish line TBD)
+- [ ] **T20** Settings / options UI (threshold, spacing, vocab on/off, chat toggle default-off) — M
+- [ ] **T21** Chat-injection hardening — default-off, click-only, graceful failure — S
+- [ ] **T22** README→TTM + privacy + license resolution + finish-line decision — M
+- [ ] **Checkpoint:** v1 finish line met; final full-pipeline teach-back.
 
 ---
 
-## Decisions locked (2026-06-07)
-- [x] v1 language = **ASL** (big multi-language/dataset expansion later — see [[../datasets]])
+## Decisions locked
+- [x] v1 language = **ASL** (multi-language expansion later — see [[../datasets]])
 - [x] **Public datasets only** — no self-capture
-- [x] **Parallel** to get-your-knowledge-right
 - [x] Browser = **Chrome / Brave** (both Chromium)
+- [x] Two models, client-side, offscreen-document architecture, plain-JS inference
+- [x] North star = readable sentences/paragraphs from letters **and** words (2026-06-26)
 
 ## Still open
-- [ ] License for the **shipped** model — resolve before Phase 6 (publish). See [[../datasets]] "License reality".
-- [ ] Which ~20–50 words from `asl-signs` to ship first?
+- [ ] T15: does hand-only position fix face-anchored signs, or do we need face landmarks? (measure)
+- [ ] Final vocabulary after the T16 honesty floor
+- [ ] **v1 finish line** — Chrome Web Store vs. polished load-unpacked repo (decide at Phase 5d/T22)
+- [ ] Shipped-model license (Kaggle ASL Alphabet is GPL-2.0; check Lexset + GISLR terms before any store listing)
