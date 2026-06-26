@@ -3,6 +3,7 @@
 A word sequence's per-frame features are:
   [0:63]  the 21 hand landmarks, normalized per frame (wrist at 0, lm9 unit)
   [63:66] wrist trajectory: raw wrist position minus its position in frame 0
+  [66:68] wrist location: absolute wrist x,y in the camera frame
 """
 import os
 import sys
@@ -29,7 +30,7 @@ def hand_seq():
 
 def test_features_shape(hand_seq):
     out = sequence_features(hand_seq)
-    assert out.shape == (12, 66)
+    assert out.shape == (12, 68)
 
 
 def test_per_frame_normalization_invariants(hand_seq):
@@ -48,10 +49,20 @@ def test_trajectory_captures_motion(hand_seq):
     assert np.allclose(out[0, :63], out[-1, :63], atol=1e-4)
 
 
+def test_location_captures_absolute_position(hand_seq):
+    out = sequence_features(hand_seq)
+    loc = out[:, 66:68]
+    # y unchanged (hand only drifts in x), so absolute y is constant
+    assert np.allclose(loc[:, 1], loc[0, 1], atol=1e-6)
+    # absolute x drifts the same 0.55 as the trajectory, but does NOT start at 0
+    assert loc[-1, 0] - loc[0, 0] == pytest.approx(0.55, abs=1e-4)
+    assert loc[0, 0] != pytest.approx(0.0, abs=1e-3)  # absolute, not relative
+
+
 def test_resample_to_fixed_length(hand_seq):
     feats = sequence_features(hand_seq)
     out = resample(feats, 30)
-    assert out.shape == (30, 66)
+    assert out.shape == (30, 68)
     # endpoints preserved
     assert np.allclose(out[0], feats[0], atol=1e-5)
     assert np.allclose(out[-1], feats[-1], atol=1e-5)
@@ -60,4 +71,4 @@ def test_resample_to_fixed_length(hand_seq):
 def test_resample_downsamples_too(hand_seq):
     feats = sequence_features(hand_seq)
     out = resample(feats, 5)
-    assert out.shape == (5, 66)
+    assert out.shape == (5, 68)

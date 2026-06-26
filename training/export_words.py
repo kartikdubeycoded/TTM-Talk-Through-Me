@@ -71,6 +71,10 @@ def main():
     with open(LABELS_PATH) as f:
         labels = json.load(f)
 
+    # Derive geometry from the model, not a hardcoded constant — the feature
+    # count has changed before (66 -> 68) and a stale literal silently breaks.
+    _, n_frames, n_features = model.input_shape
+
     layers = []
     for layer in model.layers:
         if isinstance(layer, tf.keras.layers.LSTM):
@@ -95,7 +99,7 @@ def main():
 
     # Self-verify on 3 random sequences before writing anything
     rng = np.random.default_rng(0)
-    seqs = rng.normal(size=(3, 30, 66)).astype(np.float32)
+    seqs = rng.normal(size=(3, n_frames, n_features)).astype(np.float32)
     expected = model.predict(seqs, verbose=0)
     for s in range(3):
         actual = numpy_forward(layers, seqs[s])
@@ -107,7 +111,7 @@ def main():
 
     os.makedirs(os.path.dirname(EXPORT_PATH), exist_ok=True)
     with open(EXPORT_PATH, "w") as f:
-        json.dump({"frames": 30, "features": 66, "labels": labels,
+        json.dump({"frames": n_frames, "features": n_features, "labels": labels,
                    "layers": layers}, f)
     size_mb = os.path.getsize(EXPORT_PATH) / 1024 / 1024
     print(f"Exported {len(layers)} layers + {len(labels)} words "

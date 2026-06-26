@@ -16,7 +16,8 @@ let wristVelocityRolling = 0;
 
 // Word model: rolling buffer of the last WORD_FRAMES analyzed frames.
 // Features per frame match pipeline/word_features.py: 63 normalized
-// landmarks + wrist trajectory relative to the buffer's first frame.
+// landmarks + 3 wrist trajectory (relative to the buffer's first frame)
+// + 2 absolute wrist location (x,y in the camera frame) = 68 features.
 const WORD_FRAMES = 30;
 const WORD_EVERY_N_FRAMES = 8; // LSTM is heavier — run at ~2.5 Hz, not 20
 let classifyWords = null;
@@ -153,7 +154,9 @@ function processFrame() {
       frameCounter % WORD_EVERY_N_FRAMES === 0) {
     const w0 = frameBuffer[0].wrist;
     const seq = frameBuffer.map(f => [
-      ...f.norm, f.wrist.x - w0.x, f.wrist.y - w0.y, f.wrist.z - w0.z
+      ...f.norm,
+      f.wrist.x - w0.x, f.wrist.y - w0.y, f.wrist.z - w0.z,  // [63:66] trajectory
+      f.wrist.x, f.wrist.y                                    // [66:68] location
     ]);
     const wScores = classifyWords(seq);
     const wIdx = argmax(wScores);

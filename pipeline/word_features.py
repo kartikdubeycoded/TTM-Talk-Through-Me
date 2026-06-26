@@ -1,18 +1,24 @@
 """Per-frame features for word-level (temporal) sign recognition.
 
-Each frame of a word sequence becomes 66 numbers:
+Each frame of a word sequence becomes 68 numbers:
   [0:63]  the 21 hand landmarks normalized per frame — same wrist-anchor +
           knuckle-scale convention as the alphabet pipeline (normalize.py),
           so the live extension computes them identically
   [63:66] wrist trajectory: this frame's raw wrist position minus the first
           frame's — per-frame normalization erases WHERE the hand is, but
           signs are movements; this puts the motion back.
+  [66:68] wrist LOCATION: this frame's absolute wrist x,y in the camera frame.
+          Trajectory says how the hand MOVED; location says WHERE it is. Signs
+          like "dad" (hand at forehead) vs "mom" (hand at chin) share a
+          handshape and barely move — only the height in frame separates them,
+          which shape+trajectory alone cannot see. z is omitted: MediaPipe hand
+          z is wrist-relative, so the wrist's own z is ~0 (a dead column).
 """
 import numpy as np
 
 
 def sequence_features(frames):
-    """(T, 21, 3) raw hand landmarks -> (T, 66) features."""
+    """(T, 21, 3) raw hand landmarks -> (T, 68) features."""
     frames = np.asarray(frames, dtype=np.float32)
     wrist = frames[:, 0:1, :]                      # (T, 1, 3)
     centered = frames - wrist
@@ -21,8 +27,9 @@ def sequence_features(frames):
     normalized = centered / scale[:, None, :]      # (T, 21, 3)
 
     trajectory = (wrist[:, 0, :] - wrist[0, 0, :])  # (T, 3)
+    location = wrist[:, 0, 0:2]                      # (T, 2) absolute x,y
     return np.concatenate(
-        [normalized.reshape(len(frames), 63), trajectory], axis=1
+        [normalized.reshape(len(frames), 63), trajectory, location], axis=1
     ).astype(np.float32)
 
 
