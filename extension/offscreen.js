@@ -4,6 +4,7 @@
 
 import { FilesetResolver, HandLandmarker } from "./lib/vision_bundle.js";
 import { createClassifier, createSequenceClassifier, argmax } from "./inference.js";
+import { normalizeLandmarks, buildWordSequence } from "./features.js";
 
 const FRAME_INTERVAL_MS = 50; // ~20 fps analysis
 
@@ -28,25 +29,6 @@ let lastWordResult = null;
 
 function send(payload) {
   chrome.runtime.sendMessage(payload).catch(() => {});
-}
-
-function getNormalizedLandmarks(landmarks) {
-  // MUST match pipeline/normalize.py exactly
-  const wrist = landmarks[0];
-  const mcp9 = landmarks[9];
-  const scale = Math.sqrt(
-    (mcp9.x - wrist.x) ** 2 + (mcp9.y - wrist.y) ** 2 + (mcp9.z - wrist.z) ** 2
-  ) || 1e-6;
-
-  const normalized = [];
-  for (const lm of landmarks) {
-    normalized.push(
-      (lm.x - wrist.x) / scale,
-      (lm.y - wrist.y) / scale,
-      (lm.z - wrist.z) / scale
-    );
-  }
-  return normalized;
 }
 
 function trackWristVelocity(wrist) {
@@ -137,7 +119,7 @@ function processFrame() {
 
   const handLms = result.landmarks[0];
   trackWristVelocity(handLms[0]);
-  const normLms = getNormalizedLandmarks(handLms);
+  const normLms = normalizeLandmarks(handLms);
 
   const scores = classify(normLms);
   const maxIdx = argmax(scores);
@@ -152,12 +134,7 @@ function processFrame() {
 
   if (classifyWords && frameBuffer.length === WORD_FRAMES &&
       frameCounter % WORD_EVERY_N_FRAMES === 0) {
-    const w0 = frameBuffer[0].wrist;
-    const seq = frameBuffer.map(f => [
-      ...f.norm,
-      f.wrist.x - w0.x, f.wrist.y - w0.y, f.wrist.z - w0.z,  // [63:66] trajectory
-      f.wrist.x, f.wrist.y                                    // [66:68] location
-    ]);
+    const seq = buildWordSequence(frameBuffer);
     const wScores = classifyWords(seq);
     const wIdx = argmax(wScores);
     lastWordResult = { label: wordLabels[wIdx], confidence: wScores[wIdx] };
