@@ -20,14 +20,15 @@ import numpy as np
 def sequence_features(frames):
     """(T, 21, 3) raw hand landmarks -> (T, 68) features."""
     frames = np.asarray(frames, dtype=np.float32)
-    wrist = frames[:, 0:1, :]                      # (T, 1, 3)
+    wrist = frames[:, 0:1, :]                      # (T, 1, 3) for broadcasting
     centered = frames - wrist
     scale = np.linalg.norm(centered[:, 9, :], axis=1, keepdims=True)  # (T, 1)
     scale = np.where(scale == 0, 1e-6, scale)
     normalized = centered / scale[:, None, :]      # (T, 21, 3)
 
-    trajectory = (wrist[:, 0, :] - wrist[0, 0, :])  # (T, 3)
-    location = wrist[:, 0, 0:2]                      # (T, 2) absolute x,y
+    wrist_pos = wrist[:, 0, :]                      # (T, 3) per-frame wrist
+    trajectory = wrist_pos - wrist_pos[0]          # (T, 3) motion since frame 0
+    location = wrist_pos[:, 0:2]                    # (T, 2) absolute x,y
     return np.concatenate(
         [normalized.reshape(len(frames), 63), trajectory, location], axis=1
     ).astype(np.float32)
