@@ -107,3 +107,15 @@ Session: 26 June 2026 — plan refresh + Phase 5b (trustworthy words)
 - Open: is 79.4% good enough to build the assembler on, or push accuracy first? (awaiting Katti's call); borderline cluster fine/can/finish/look ~0.5; teach-back on the wrist-location fix still pending.
 
 ---
+Session: 26–27 June 2026 (continued) — review-driven hardening + sentence assembler started
+- What we worked on: ran the changed code through a simplify pass and a five-axis review, hardened the weakest spot, then started the sentence assembler (Phase 5c / T17).
+- Decisions:
+  - **Simplify pass:** the Phase 5b code was already minimal — applied one honest win (named the thrice-reindexed wrist as `wrist_pos`), left two apparent-duplications alone (the `offscreen.js` wrist copy is *defensive* against MediaPipe object reuse; the `export_words.py` LSTM/Dense branches extract genuinely different weights). Commit 84dd585.
+  - **Code review** flagged the real gap: the LSTM smoke test proved the JS *model* matches Keras, but nothing proved the JS *feature construction* matches Python — a silent divergence would feed the model different numbers live than in training and pass every test. Fixed (TDD): extracted `normalizeLandmarks` + `buildWordSequence` into `extension/features.js`, which `offscreen.js` now imports (one implementation, not a copy); `tests/smoke_features.mjs` replays a Python-generated fixture and asserts JS↔Python parity (3.95e-7). Commit 859256a. Empirically confirmed `traj_z` is a dead column (std=0) — deferred drop to next retrain.
+  - **T17 slice 1 (of 2):** built `extension/assembler.js` — pure, DOM-free: capitalizes sentences, ends with `.`/`?` (question words), conservative one-edit autocorrect for *fingerspelled* words only (signed vocab trusted, never rewritten). Tested via `tests/smoke_assembler.mjs` (RED→GREEN). Commit 135858b.
+  - **Slice 2 (content.js wiring) deliberately held back** — it changes live behavior and can't be verified in-harness; wants a real browser reload. Doing it next to the live test.
+- Results: 18 pytest + 4 JS smokes all green. 6 commits today (053be30, dec7f1a, 9aad987, 84dd585, 859256a, 135858b).
+- Next session: **actual live test runs** — reload the extension on a real Meet, sign letters + the 39 words, and honestly record per-letter/per-word hit rates (this is T19 territory and tells us if 79.4% survives a real webcam). Then wire the assembler into content.js (T17 slice 2) and tune letter↔word fusion (T18).
+- Open: Phase 5b teach-back still owed (one line: why the model couldn't tell dad from mom, and what wrist-location fixed); is 79.4% real on a live cam? (the test answers it); borderline word cluster ~0.5; README still says Sign-to-Text not TTM.
+
+---

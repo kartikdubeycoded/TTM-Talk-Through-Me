@@ -24,9 +24,11 @@ Full acceptance criteria + verification: [[plan]].
 - [~] **Checkpoint:** shipped vocab all above floor ✅; **teach-back + human review PENDING** before Phase 5c.
 
 ## Phase 5c: Readable sentences
-- [ ] **T17** Sentence assembler — capitalization, punctuation, sentence boundaries, autocorrect — M
+- [~] **T17** Sentence assembler — slice 1 ✅ pure tested module `extension/assembler.js` (cap, punctuation, `?`, autocorrect, backspace; commit `135858b`). **Slice 2 = wire into content.js + pause→sentence timing — needs live reload, held for next session.**
 - [ ] **T18** Fusion tuning — letters ↔ words don't fight; precedence explicit + tunable — M
 - [ ] **Checkpoint:** clean fused sentences; teach-back on precedence + pause→punctuation rules. **Human review.**
+
+> **Next session starts with LIVE TEST RUNS (T19 pulled forward):** reload the extension on a real Meet, sign letters + the 39 words, honestly record per-letter/per-word hit rates. The live numbers decide what to fix before finishing 5c/5d. Also added this session: `tests/smoke_features.mjs` (JS↔Python feature parity) + `extension/features.js` (shared module).
 
 ## Phase 5d: Honest combined live test
 - [ ] **T19** End-to-end live test on real Meet — Katti runs + logs honest per-letter/per-word hit rates — S
