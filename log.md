@@ -145,3 +145,22 @@ Session: 20–21 July 2026 (continued) — rename to TTM, UX fixes, strategy piv
 - Open: permission fix + caption UI un-verified live (need Katti's reload+retest); download was slow (~2 MB/s, ~4 h ETA, resumable); RTX 4050 present but TF can't use it on native Windows (WSL2+PyTorch or Kaggle for the big training); pass-2 185-word model still not exported into the extension.
 
 ---
+Session: 21 July 2026 (late) — writer layer built + honest remaining-work map
+- What we worked on: built the "writer" half of the eyes+writer pipeline (the SLM sentence layer with memory), while the 43 GB ASL Citizen download runs.
+- Built (all committed + pushed to main):
+  - `extension/writer.js` (`createWriter`) — wraps the rule-based `assembler.js` with (a) a rolling conversation MEMORY (user's finished sentences + the other party's captions) and (b) an OPTIONAL on-device LLM refiner. Strategy + dependency injection so the core is testable in Node.
+  - Guaranteed fallback (tested): if the LLM is absent/errors/returns empty, `refined()` returns the rule-based text — the LLM can never break or block captions. Conservative system prompt (fix grammar only, never invent facts/names).
+  - `createGeminiNanoRefiner()` — feature-detected Chrome Prompt API adapter; returns null when unavailable (the common case, incl. BRAVE). Isolated, not unit-testable, needs live verification on a Nano-capable Chrome.
+  - `assembler.endSentence()` now returns the finished sentence (so writer can remember it; existing tests unaffected).
+  - TDD: `tests/smoke_writer.mjs` (7 cases) RED→GREEN; all 5 JS smokes + 25 pytest green.
+- Honest status reality-check delivered: the SURROUNDING system is largely built (writer, caption UI, one-click permission, 185-word model trained, ASL Citizen front-end). But "just get the data and we're done" is FALSE. Still ahead: (a) data+train (real work, not just a download), (b) wire the writer into content.js (needs a live reload), (c) **the hard one — Phase B: run the better model LIVE (Face+Pose landmarkers in real-time in the browser, latency budget). The extension STILL runs the OLD 39-word hand-only model.** (d) muzzle the letter firehose (T18).
+- NEXT SESSION (Katti returns with the download done):
+  1. Build the real ASL Citizen extractor against the actual files → run on 500-word subset → train the bigger model.
+  2. Wire `writer.js` into `content.js` (replace the inline sentence logic) — verify with a live reload.
+  3. Muzzle the letter firehose (T18) + the 3→5 quality push.
+  4. (Bigger, staged) Phase B: live Face+Pose model integration.
+  5. Also pending: Katti to reload the extension + Meet TAB and confirm the one-click permission + new caption UI actually show (harness proved the code renders — the fix is: reload the page after reloading the extension).
+- Goal framing locked: tomorrow = 3/10 → 5/10 (cleaner output, more words, + a scalability/system-design doc). North star = beat SignGemma/SignAll on PRODUCT + REACH + ISL, not on raw ASL model accuracy (unwinnable solo). No patent (crowded).
+- Open: Gemini Nano won't run in Brave → writer uses rule-based fallback there until tested on a Nano Chrome; writer not yet wired live; download completion + speed unknown.
+
+---
