@@ -108,22 +108,59 @@
   letter-spacing: 0.5px;
 }
 
+/* The caption is the hero: large, high-contrast, easy to read at a glance. */
 .s2t-sentence-container {
-  min-height: 60px;
-  background: rgba(0, 0, 0, 0.15);
+  min-height: 96px;
+  max-height: 220px;
+  background: rgba(0, 0, 0, 0.22);
   border-radius: 12px;
-  padding: 12px;
-  font-size: 16px;
-  line-height: 1.4;
-  color: #f8fafc;
+  padding: 16px;
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #ffffff;
   overflow-y: auto;
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .s2t-sentence-placeholder {
   color: #64748b;
   font-style: italic;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+/* Developer readouts, collapsed by default so the Deaf user sees only captions. */
+.s2t-details {
+  font-size: 12px;
+}
+
+.s2t-details > summary {
+  cursor: pointer;
+  list-style: none;
+  color: #94a3b8;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.s2t-details > summary::-webkit-details-marker { display: none; }
+.s2t-details > summary::before { content: "\25B8  "; }       /* ▸ */
+.s2t-details[open] > summary::before { content: "\25BE  "; }  /* ▾ */
+
+.s2t-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.s2t-detail-label {
+  color: #94a3b8;
+  font-weight: 600;
 }
 
 .s2t-buffer-container {

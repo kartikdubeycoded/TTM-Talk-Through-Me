@@ -282,18 +282,20 @@ function createOverlayDOM() {
       </div>
     </div>
     <div class="s2t-body">
-      <div class="s2t-label">Live Captions</div>
       <div class="s2t-sentence-container" id="s2t-sentence-container">
-        <span class="s2t-sentence-placeholder" id="s2t-placeholder">Captions will appear here...</span>
+        <span class="s2t-sentence-placeholder" id="s2t-placeholder">Sign to see captions here&hellip;</span>
       </div>
-      <div class="s2t-label">Word Buffer</div>
-      <div class="s2t-buffer-container">
-        <span class="s2t-buffer-text" id="s2t-buffer-text">-</span>
-      </div>
-      <div class="s2t-label">Model sees (live)</div>
-      <div class="s2t-buffer-container">
-        <span class="s2t-buffer-text" id="s2t-guess" style="opacity:0.75">&mdash;</span>
-      </div>
+      <details class="s2t-details">
+        <summary>Details</summary>
+        <div class="s2t-detail-row">
+          <span class="s2t-detail-label">Word buffer</span>
+          <span class="s2t-buffer-text" id="s2t-buffer-text">-</span>
+        </div>
+        <div class="s2t-detail-row">
+          <span class="s2t-detail-label">Model sees</span>
+          <span class="s2t-buffer-text" id="s2t-guess" style="opacity:0.75">&mdash;</span>
+        </div>
+      </details>
     </div>
     <div class="s2t-footer">
       <button class="s2t-btn s2t-btn-secondary" id="s2t-clear-btn">Clear</button>
