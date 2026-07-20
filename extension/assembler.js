@@ -77,9 +77,11 @@ export function createAssembler() {
       if (word) words.push(word.toLowerCase()); // trusted vocab — no autocorrect
     },
     endSentence() {
-      if (words.length === 0) return;
-      sentences.push(renderSentence(words, true));
+      if (words.length === 0) return null;
+      const finished = renderSentence(words, true);
+      sentences.push(finished);
       words = [];
+      return finished; // so the writer layer can remember it for context
     },
     backspace() {
       if (words.length > 0) words.pop();
