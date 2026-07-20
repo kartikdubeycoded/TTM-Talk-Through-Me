@@ -18,25 +18,33 @@ import os
 import numpy as np
 import pandas as pd
 
-from word_features import sequence_features, resample
+from word_features import whole_body_features, resample
 
 RAW_DIR = os.path.join("data", "raw", "gislr-words")
 META_CSV = os.path.join("data", "raw", "gislr-meta", "extended_train.csv")
 OUT_DIR = os.path.join("data", "words")
 
+# The 66 landmarks per frame are [lips 0:40, hand 40:61, pose 61:66]. The
+# hand-only model used HAND_SLICE and threw the rest away; whole-body features
+# (word_features.whole_body_features) now use all three.
+LIPS_SLICE = slice(0, 40)
 HAND_SLICE = slice(40, 61)
+POSE_SLICE = slice(61, 66)
 N_FRAMES = 30
 MIN_HAND_FRAMES = 8
 
 # Vocabulary honesty floor (T16): we only ship words the model can actually
 # read on UNSEEN signers — a word recognized 15% of the time injects garbage
 # into the sentence stream. Floor = 0.5 held-out per-word accuracy.
-# Dropped below the floor (2026-06-26, after the T15 wrist-location feature):
-#   go  0.15  — a directional point; meaning is in the pointing direction, not
-#               the handshape, so a single-hand landmark model can't read it.
-# Borderline-but-kept (0.58–0.65): finish, look, thankyou, night, drink, mad,
-#   fine, bad — usable behind the live lock-in gate; revisit if they hurt.
-VOCAB = [
+#
+# Phase A (T24): with whole-body features we re-open the FULL vocabulary. Pass 1
+# trains on every sign in the dataset (SHIP_VOCAB = None → derived from the data)
+# and prints per-word held-out accuracy; pass 2 sets SHIP_VOCAB to the survivors
+# (≥ floor) and re-ingests the shipped set. STARTER_VOCAB is the 39 words the
+# hand-only model shipped, kept for before/after comparison.
+SHIP_VOCAB = None  # None = all signs in the dataset; else an explicit ship list
+
+STARTER_VOCAB = [
     "hello", "bye", "yes", "no", "please", "thankyou", "fine", "bad",
     "happy", "sad", "mad", "hungry", "thirsty", "sick", "sleepy", "water",
     "food", "drink", "milk", "mom", "dad", "who", "where", "why", "now",
@@ -57,23 +65,26 @@ def main():
         pd.DataFrame({"y": y_all, "sign": meta["sign"]})
         .drop_duplicates().set_index("y")["sign"].to_dict()
     )
-    wanted_labels = {lbl for lbl, s in sign_of_label.items() if s in VOCAB}
-    label_index = {s: i for i, s in enumerate(VOCAB)}
+    vocab = SHIP_VOCAB if SHIP_VOCAB else sorted(set(sign_of_label.values()))
+    wanted_labels = {lbl for lbl, s in sign_of_label.items() if s in vocab}
+    label_index = {s: i for i, s in enumerate(vocab)}
 
     rows = np.where(np.isin(y_all, list(wanted_labels)))[0]
-    print(f"{len(rows)} sequences for {len(VOCAB)} words")
+    print(f"{len(rows)} sequences for {len(vocab)} words")
 
     X_out, y_out, p_out, skipped = [], [], [], 0
     for n, r in enumerate(rows):
         slots = np.where(frame_idxs[r] >= 0)[0]
         frames = np.array(X_all[r])[slots]            # (T, 66, 3)
-        hand = frames[:, HAND_SLICE, :]               # (T, 21, 3)
-        has_hand = np.abs(hand).sum(axis=(1, 2)) > 0
-        hand = hand[has_hand]
-        if len(hand) < MIN_HAND_FRAMES:
+        has_hand = np.abs(frames[:, HAND_SLICE, :]).sum(axis=(1, 2)) > 0
+        if has_hand.sum() < MIN_HAND_FRAMES:
             skipped += 1
             continue
-        X_out.append(resample(sequence_features(hand), N_FRAMES))
+        frames = frames[has_hand]                     # keep hand-present frames
+        feats = whole_body_features(frames[:, HAND_SLICE, :],
+                                    frames[:, LIPS_SLICE, :],
+                                    frames[:, POSE_SLICE, :])
+        X_out.append(resample(feats, N_FRAMES))
         y_out.append(label_index[sign_of_label[y_all[r]]])
         p_out.append(meta["participant_id"].iloc[r])
         if (n + 1) % 2000 == 0:
@@ -85,12 +96,12 @@ def main():
     np.save(os.path.join(OUT_DIR, "participants.npy"),
             np.array(p_out, dtype=np.int64))
     with open(os.path.join(OUT_DIR, "labels.json"), "w") as f:
-        json.dump(VOCAB, f)
+        json.dump(vocab, f)
 
-    counts = np.bincount(y_out, minlength=len(VOCAB))
+    counts = np.bincount(y_out, minlength=len(vocab))
     print(f"\nSaved {len(X_out)} sequences ({skipped} skipped, too few hand frames)")
     print(f"Participants: {len(set(p_out))}")
-    thin = [VOCAB[i] for i in range(len(VOCAB)) if counts[i] < 150]
+    thin = [vocab[i] for i in range(len(vocab)) if counts[i] < 150]
     print(f"Per-word min/median/max: {counts.min()}/{int(np.median(counts))}/{counts.max()}")
     if thin:
         print(f"WARNING — thin words (<150): {', '.join(thin)}")
