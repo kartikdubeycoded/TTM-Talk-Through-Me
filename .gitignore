@@ -9,6 +9,13 @@ models/
 *.npy
 *.h5
 
+# Downloaded datasets (tens of GB — never commit)
+how2sign_continuous_data/
+asl_citizen_data/
+asl_citizen/
+ASL_Citizen*.zip
+*.zip
+
 # Node / extension build
 node_modules/
 
