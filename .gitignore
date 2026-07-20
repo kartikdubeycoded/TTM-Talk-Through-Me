@@ -18,6 +18,12 @@ extension/lib/
 extension/wasm/
 extension/model/hand_landmarker.task
 
+# Live-test scratch (huge raw video + run logs — throwaway)
+*.y4m
+*.mjpeg
+test_run_log.json
+WhatsApp Video*.mp4
+
 # OS noise
 .DS_Store
 Thumbs.db

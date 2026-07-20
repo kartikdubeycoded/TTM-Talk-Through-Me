@@ -8,6 +8,8 @@ const puppeteer = require("puppeteer-core");
 
 const BRAVE = "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe";
 const EXT = path.resolve(__dirname, "..", "extension");
+const VIDEO = path.resolve(__dirname, "..", "test_signs.y4m"); // the ASL clip, fed as the webcam
+const fs = require("fs");
 
 (async () => {
   const browser = await puppeteer.launch({
@@ -16,8 +18,9 @@ const EXT = path.resolve(__dirname, "..", "extension");
     args: [
       `--disable-extensions-except=${EXT}`,
       `--load-extension=${EXT}`,
-      "--use-fake-device-for-media-stream", // synthetic camera, no hardware
-      "--use-fake-ui-for-media-stream",     // auto-grant camera permission
+      "--use-fake-device-for-media-stream",          // pretend a camera exists
+      `--use-file-for-fake-video-capture=${VIDEO}`,  // ...and it's our ASL clip
+      "--use-fake-ui-for-media-stream",              // auto-grant camera permission
       "--no-first-run",
       "--disable-features=DialMediaRouteProvider",
     ],
@@ -89,21 +92,36 @@ const EXT = path.resolve(__dirname, "..", "extension");
     }));
     console.log(`[harness] tf diagnostic:`, JSON.stringify(tfState));
 
-    // Poll the overlay's status every 5s
-    for (let i = 0; i < 5; i++) {
-      await new Promise(r => setTimeout(r, 5000));
-      const status = await page.evaluate(() => {
+    // Watch the overlay while the ASL clip plays. Sample the live "Model sees"
+    // guess twice a second; log a line only when the guess CHANGES (so the log
+    // reads as one line per distinct sign, not a wall of repeats).
+    const SECONDS = Number(process.env.AUDIT_SECONDS) || 150;  // watch window
+    const rows = [];
+    let lastGuess = null;
+    for (let i = 0; i < SECONDS * 2; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      const snap = await page.evaluate(() => {
+        const g = document.getElementById("s2t-guess");
         const dot = document.getElementById("s2t-status-text");
         const sentence = document.getElementById("s2t-sentence-container");
         return {
-          overlayExists: !!document.getElementById("signtotext-overlay"),
+          guess: g ? g.textContent.trim() : null,
           status: dot ? dot.textContent : null,
-          sentenceArea: sentence ? sentence.textContent.slice(0, 200) : null,
+          sentence: sentence ? sentence.textContent.slice(0, 300) : null,
         };
       });
-      console.log(`[harness] t+${(i + 1) * 5}s overlay=${status.overlayExists} ` +
-                  `status="${status.status}" text="${status.sentenceArea}"`);
+      const t = ((i + 1) / 2).toFixed(1);
+      if (snap && snap.guess && snap.guess !== lastGuess) {
+        lastGuess = snap.guess;
+        console.log(`[t+${t}s] sees="${snap.guess}"  status="${snap.status}"`);
+        rows.push({ t, guess: snap.guess, status: snap.status, sentence: snap.sentence });
+      }
     }
+    const outPath = path.resolve(__dirname, "..", "test_run_log.json");
+    fs.writeFileSync(outPath, JSON.stringify(rows, null, 2));
+    const finalSentence = rows.length ? rows[rows.length - 1].sentence : "(none)";
+    console.log(`[harness] captured ${rows.length} guess-changes -> ${outPath}`);
+    console.log(`[harness] final caption text: "${finalSentence}"`);
   } finally {
     await browser.close();
     console.log("[harness] done");
