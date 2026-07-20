@@ -119,3 +119,17 @@ Session: 26–27 June 2026 (continued) — review-driven hardening + sentence as
 - Open: Phase 5b teach-back still owed (one line: why the model couldn't tell dad from mom, and what wrist-location fixed); is 79.4% real on a live cam? (the test answers it); borderline word cluster ~0.5; README still says Sign-to-Text not TTM.
 
 ---
+Session: 20 July 2026 — first live-pipeline run + whole-body feature upgrade (Phase A)
+- What we worked on: (1) built the honest test harness and ran the WHOLE pipeline end-to-end on a real ASL video for the first time; (2) on Katti's insight, added face+pose to the word features and retrained on the full 250-word vocab.
+- The live-pipeline milestone: fed a real "25 ASL signs" video through Chrome's fake camera (`tools/debug_extension.cjs`, `--use-file-for-fake-video-capture`). First-ever end-to-end run — hands tracked, both models fired. Word model recognized real signs in the wild (tomorrow/sad/dad/morning/happy/thirsty/look/listen 90–100%). Letters spat junk (letter firehose during word-signing = T18, known).
+- The upgrade (Katti's call, and he was right): the word model read only the HAND; face + upper-body position is the signal that separates confusable/face-anchored signs. The data was ALREADY in the GISLR files (`lips 0:40, hand 40:61, pose 61:66`) — `ingest_words.py` was discarding lips+pose. No new video needed.
+- Decisions:
+  - `whole_body_features(hand, lips, pose)` — keep the proven 68-col hand recipe, append a 13-col block anchored to the lips centroid, scaled by lip width (signer-invariant). TDD: RED→GREEN, 3 new tests, 6 old hand tests still green.
+  - Ingest the FULL 250-word vocab (was 39) through the new recipe → `(70249, 30, 81)`.
+  - **RESULT: 185 / 250 words clear the 0.50 honesty floor** (was 39 shipped), 89 ≥0.70. Headline 61.9% (all-250 average, dragged by 65 sub-floor words). **~5× usable vocabulary, same architecture, zero new data — the whole-body idea worked.** Full table in `training/results_wholebody_250.md`.
+  - Scale-up decision (gate passed): go for Microsoft **ASL Citizen** (2,700 signs, 43 GB raw MP4) next, 500-word subset first. Katti started the 43 GB download this session. GPU reality: RTX 4050 present but TF 2.21 can't use it on native Windows → plan is WSL2+PyTorch (or free Kaggle) for the big job; extraction (~1 day) is CPU-bound, GPU only speeds training.
+- Files changed: `pipeline/word_features.py` (+whole_body_features), `pipeline/ingest_words.py` (full vocab + lips/pose slices), `tests/test_word_features.py` (+3 tests), `training/results_wholebody_250.md` (new), `tools/debug_extension.cjs` + `.gitignore` (test harness). Commits on branch `whole-body-features`: 1102afe, + this session.
+- Next: (1) commit/verify extension functionality on Meet (harness audit); (2) once ASL Citizen downloads → WSL2+PyTorch setup + extraction/training scripts (I draft against microsoft/ASL-citizen-code); (3) still no runtime to WATCH the new 185-word model — Katti chose to defer the offline tester; his phone-camera test still exercises the OLD 39-word extension.
+- Open: no A/B proving whole-body caused the lift vs just more words (clean 39-word hand-vs-body run would nail it); pass-2 final shipped model on the 185 survivors not yet retrained/exported; live integration of the new model (face+pose trackers in-browser, real-time budget) = the hard Phase B, undecided (desktop demo vs live extension); teach-back still owed.
+
+---
