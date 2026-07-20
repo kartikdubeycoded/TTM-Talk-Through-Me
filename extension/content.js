@@ -275,7 +275,7 @@ function createOverlayDOM() {
   overlayElement.id = "signtotext-overlay";
   overlayElement.innerHTML = `
     <div class="s2t-header">
-      <div class="s2t-title">Sign<span>ToText</span></div>
+      <div class="s2t-title">Talk Through <span>Me</span></div>
       <div class="s2t-status">
         <span class="s2t-status-dot lost" id="s2t-status-dot"></span>
         <span id="s2t-status-text">Connecting</span>

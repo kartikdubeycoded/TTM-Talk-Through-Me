@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SignToText",
+  "name": "Talk Through Me",
   "version": "1.0",
-  "description": "Live sign language to text translator. Injects a gorgeous floating overlay directly onto Google Meet and video calls.",
+  "description": "Talk Through Me (TTM) — live sign-language captions on your video calls. Your webcam never leaves your machine.",
   "permissions": [
     "storage",
     "offscreen"

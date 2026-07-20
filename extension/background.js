@@ -1,9 +1,9 @@
-// background.js - SignToText service worker.
+// background.js - Talk Through Me service worker.
 // Owns the offscreen document (where camera + ML run) and relays its
 // prediction stream to content scripts.
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("SignToText extension successfully installed.");
+  console.log("Talk Through Me extension successfully installed.");
   chrome.storage.local.set({
     extensionEnabled: false,
     chatInjectionEnabled: false,
@@ -25,6 +25,24 @@ async function closeOffscreen() {
   if (await chrome.offscreen.hasDocument()) {
     await chrome.offscreen.closeDocument();
   }
+}
+
+// Restart the engine: tear down the failed offscreen doc and recreate it so it
+// retries getUserMedia — used right after the camera permission is granted.
+async function restartOffscreen() {
+  await closeOffscreen();
+  await ensureOffscreen();
+}
+
+// Open the one-time camera-grant page, throttled so a burst of "camera-denied"
+// frames (or a service-worker restart) can't spam duplicate tabs. Uses storage
+// instead of chrome.tabs.query({url}) because that needs the "tabs" permission,
+// which this extension intentionally does not request.
+async function openPermissionTabOnce() {
+  const { lastPermissionTabAt = 0 } = await chrome.storage.local.get("lastPermissionTabAt");
+  if (Date.now() - lastPermissionTabAt < 10000) return; // one per 10s max
+  await chrome.storage.local.set({ lastPermissionTabAt: Date.now() });
+  chrome.tabs.create({ url: chrome.runtime.getURL("permission.html") });
 }
 
 function broadcastToTabs(message) {
@@ -55,18 +73,22 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 
 // Messages from the offscreen document (frames/status) -> content scripts.
 // Messages from content scripts (ensure-offscreen on page load) -> offscreen.
-let permissionTabOpened = false;
 chrome.runtime.onMessage.addListener((msg) => {
   if (!msg || typeof msg.type !== "string") return;
 
   if (msg.type === "s2tFrame" || msg.type === "s2tStatus") {
     broadcastToTabs(msg);
 
-    // First camera denial: open the one-time permission page
-    if (msg.type === "s2tStatus" && msg.code === "camera-denied" && !permissionTabOpened) {
-      permissionTabOpened = true;
-      chrome.tabs.create({ url: chrome.runtime.getURL("permission.html") });
+    // Camera denied: open the one-time permission page (deduped).
+    if (msg.type === "s2tStatus" && msg.code === "camera-denied") {
+      openPermissionTabOnce();
     }
+  }
+
+  // Camera just granted on the permission page: restart the engine so it
+  // retries the camera automatically — no manual toggle off/on needed.
+  if (msg.type === "s2tPermissionGranted") {
+    restartOffscreen();
   }
 
   if (msg.type === "s2tEnsureOffscreen") {
