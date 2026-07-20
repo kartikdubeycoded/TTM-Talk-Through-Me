@@ -12,7 +12,9 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "pipeline"))
-from word_features import sequence_features, resample
+from word_features import sequence_features, resample, whole_body_features
+
+WHOLE_BODY_WIDTH = 81  # 68 hand block + 2 hand-rel-face + 10 pose-rel-face + 1 lip openness
 
 
 @pytest.fixture
@@ -72,3 +74,46 @@ def test_resample_downsamples_too(hand_seq):
     feats = sequence_features(hand_seq)
     out = resample(feats, 5)
     assert out.shape == (5, 68)
+
+
+# --- whole-body features (Phase A / T23): hand + lips + pose ----------------
+
+@pytest.fixture
+def body_seq():
+    """A fake 10-frame sequence with hand (21), lips (40) and pose (5)."""
+    rng = np.random.default_rng(7)
+    hand = rng.normal(0.5, 0.10, size=(10, 21, 3)).astype(np.float32)
+    lips = rng.normal(0.5, 0.05, size=(10, 40, 3)).astype(np.float32)
+    pose = rng.normal(0.5, 0.10, size=(10, 5, 3)).astype(np.float32)
+    return hand, lips, pose
+
+
+def test_whole_body_shape_and_reuses_hand_block(body_seq):
+    hand, lips, pose = body_seq
+    out = whole_body_features(hand, lips, pose)
+    assert out.shape == (10, WHOLE_BODY_WIDTH)
+    # the first 68 columns must be byte-for-byte the proven hand recipe
+    assert np.allclose(out[:, :68], sequence_features(hand), atol=1e-6)
+
+
+def test_whole_body_block_is_face_anchored_and_scale_invariant(body_seq):
+    """Cols [68:81] anchor to the lips and scale by lip width, so shifting AND
+    resizing the whole signer in frame must not change them (signer-invariance
+    is the entire justification for the feature)."""
+    hand, lips, pose = body_seq
+    base = whole_body_features(hand, lips, pose)[:, 68:]
+
+    a, b = 1.7, np.array([0.3, -0.2, 0.0], dtype=np.float32)  # scale + shift x,y
+    moved = whole_body_features(hand * a + b, lips * a + b, pose * a + b)[:, 68:]
+    assert np.allclose(base, moved, atol=1e-4)
+
+
+def test_whole_body_missing_lips_frame_is_zeroed(body_seq):
+    """A frame with no detected lips (all-zero, the dataset's missing convention)
+    can't be face-anchored, so its whole-body block must be zero, not garbage."""
+    hand, lips, pose = body_seq
+    lips = lips.copy()
+    lips[3] = 0.0
+    out = whole_body_features(hand, lips, pose)
+    assert np.allclose(out[3, 68:], 0.0, atol=1e-6)
+    assert not np.allclose(out[0, 68:], 0.0, atol=1e-6)  # other frames still populated

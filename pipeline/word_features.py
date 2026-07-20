@@ -34,6 +34,53 @@ def sequence_features(frames):
     ).astype(np.float32)
 
 
+def whole_body_features(hand, lips, pose):
+    """(T,21,3) hand + (T,40,3) lips + (T,5,3) pose -> (T, 81) features.
+
+    The first 68 columns are exactly sequence_features(hand) — the proven
+    hand-only recipe, reused unchanged. The next 13 are a whole-body block that
+    tells the model WHERE the hand is on the face/body — the signal a hand-only
+    model is blind to (why "fine"/"can"/"finish" sit near the accuracy floor,
+    and why "dad" at the forehead vs "mom" at the chin are confusable):
+
+      [68:70] wrist relative to the lips centroid, scaled by lip width
+      [70:80] the 5 pose points relative to the lips centroid, same scale
+      [80:81] lip openness (lip height / lip width) — a mouthing cue
+
+    Everything is anchored to the lips centroid and scaled by lip width, so it
+    is invariant to where the signer sits and how large they appear in frame
+    (same math idea as the hand's wrist-anchor + knuckle-scale normalization).
+    Frames with no detected lips (all-zero, the dataset's missing convention)
+    get a zero whole-body block — they can't be face-anchored.
+    """
+    hand = np.asarray(hand, dtype=np.float32)
+    lips = np.asarray(lips, dtype=np.float32)
+    pose = np.asarray(pose, dtype=np.float32)
+    T = len(hand)
+
+    base = sequence_features(hand)                     # (T, 68) proven hand block
+
+    lips_xy = lips[:, :, 0:2]                           # (T, 40, 2)
+    face_c = lips_xy.mean(axis=1)                       # (T, 2) lips centroid
+    lip_w = lips_xy[:, :, 0].max(axis=1) - lips_xy[:, :, 0].min(axis=1)  # (T,)
+    lip_h = lips_xy[:, :, 1].max(axis=1) - lips_xy[:, :, 1].min(axis=1)  # (T,)
+    safe_w = np.where(lip_w == 0, 1e-6, lip_w)          # (T,)
+
+    wrist_xy = hand[:, 0, 0:2]                          # (T, 2)
+    hand_rel = (wrist_xy - face_c) / safe_w[:, None]    # (T, 2)
+    pose_rel = ((pose[:, :, 0:2] - face_c[:, None, :])
+                / safe_w[:, None, None]).reshape(T, 10)  # (T, 10)
+    openness = (lip_h / safe_w)[:, None]                # (T, 1)
+
+    body = np.concatenate([hand_rel, pose_rel, openness], axis=1)  # (T, 13)
+
+    # Zero the block for frames whose lips weren't detected (all-zero input).
+    lips_present = np.abs(lips).sum(axis=(1, 2)) > 0    # (T,)
+    body[~lips_present] = 0.0
+
+    return np.concatenate([base, body], axis=1).astype(np.float32)
+
+
 def resample(seq, n_frames):
     """Linearly resample (T, F) to (n_frames, F) along the time axis."""
     seq = np.asarray(seq, dtype=np.float32)
