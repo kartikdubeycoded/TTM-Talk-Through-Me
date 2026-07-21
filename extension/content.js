@@ -18,11 +18,18 @@ let sentenceContainer = null;
 let sentencePlaceholder = null;
 
 // Sentence states
-let currentSentence = "";
-let currentWordBuffer = "";
+// The "writer" (extension/writer.js) owns the assembled text now: it turns the
+// token stream into readable, capitalized, punctuated sentences (and holds the
+// optional on-device LLM seam). It is loaded async at init — guard on it being
+// non-null before committing tokens.
+let writer = null;
+let wordSignAllowed = null;    // fusion referee (extension/fusion.js), loaded async with the writer
+let currentWordBuffer = "";   // in-progress fingerspelled letters, before they commit as a word
 let lastPredictedLabel = null;
 let sameFrameCount = 0;
+let lastCommitTime = 0;         // when the last word/sign landed — drives sentence-boundary punctuation
 const LOCK_IN_FRAMES = 5; // lock a letter after 5 consecutive matching frames
+const SENTENCE_PAUSE_MS = 3500; // a pause this long closes the current sentence (adds . or ?)
 
 // Temporal spacing states
 let lastPredictionTime = 0;
@@ -111,8 +118,37 @@ function initSignToText() {
   createOverlayDOM();
   updateStatusUI("Initializing...", "lost");
 
+  loadWriter();
+
   // The offscreen document does the actual init; ask background for it
   chrome.runtime.sendMessage({ type: "s2tEnsureOffscreen" }).catch(() => {});
+}
+
+// Load the writer module (an ES module) into this classic content script. MV3
+// content scripts can't statically `import`, so we dynamically import the
+// extension-URL of writer.js — which is why writer.js + assembler.js are listed
+// in the manifest's web_accessible_resources. Best-effort: if it fails to load,
+// captions simply won't assemble (logged), but nothing else breaks.
+async function loadWriter() {
+  if (writer) return;
+  try {
+    const mod = await import(chrome.runtime.getURL("writer.js"));
+    let refiner = null;
+    try {
+      refiner = await mod.createGeminiNanoRefiner(); // null on Brave / non-Nano Chrome
+    } catch {
+      refiner = null;
+    }
+    writer = mod.createWriter({ refiner });
+  } catch (e) {
+    console.error("[SignToText] failed to load writer:", e);
+  }
+  try {
+    const fusion = await import(chrome.runtime.getURL("fusion.js"));
+    wordSignAllowed = fusion.wordSignAllowed;
+  } catch (e) {
+    console.error("[SignToText] failed to load fusion referee:", e);
+  }
 }
 
 function stopSignToText() {
@@ -120,7 +156,7 @@ function stopSignToText() {
     overlayElement.remove();
     overlayElement = null;
   }
-  currentSentence = "";
+  if (writer) writer.clear();
   currentWordBuffer = "";
   lastPredictedLabel = null;
   sameFrameCount = 0;
@@ -153,12 +189,22 @@ function handleFrame(frame) {
         Date.now() - lastPredictionTime >= spacingDelay) {
       commitWord();
     }
+    // A longer pause closes the sentence — the writer capitalizes it and adds
+    // terminal punctuation (. or ? for a question word). endSentence() is a
+    // no-op once the sentence is already closed, so calling it each idle frame
+    // is safe.
+    if (writer && Date.now() - lastCommitTime >= SENTENCE_PAUSE_MS) {
+      const finished = writer.endSentence();
+      if (finished) renderSentenceUI();
+    }
     return;
   }
 
   updateStatusUI("Tracking", "tracking");
 
-  // Whole-word signs take precedence over fingerspelling
+  // Whole-word signs take precedence over fingerspelling — but the fusion
+  // referee (fusion.js, T18) muzzles the word model while the user is actively
+  // spelling, so a name like K-A-T-T-I isn't hijacked by a stray whole word.
   if (frame.word && frame.wordConfidence >= WORD_CONFIDENCE) {
     if (frame.word === wordCandidate) {
       wordAgreeCount++;
@@ -167,7 +213,13 @@ function handleFrame(frame) {
       wordAgreeCount = 1;
     }
     if (wordAgreeCount >= 2 && Date.now() - lastWordTime >= WORD_COOLDOWN_MS) {
-      commitWordSign(frame.word);
+      // If the referee hasn't loaded yet, fall back to the old behaviour (allow).
+      const allowed = !wordSignAllowed || wordSignAllowed({
+        bufferLength: currentWordBuffer.length,
+        msSinceLastLetter: Date.now() - lastPredictionTime,
+        wordConfidence: frame.wordConfidence,
+      });
+      if (allowed) commitWordSign(frame.word);
     }
   }
 
@@ -211,50 +263,59 @@ function handleLockedPrediction(character, wristVelocity) {
 }
 
 // A recognized whole-word sign: replaces any half-spelled letter buffer
-// (the signing motion usually litters it with stray letters)
+// (the signing motion usually litters it with stray letters). Signed words come
+// from the trusted vocab, so the writer never autocorrects them.
 function commitWordSign(word) {
+  if (!writer) return;
   currentWordBuffer = "";
   updateUIBuffer("");
-  currentSentence += (currentSentence.length > 0 ? " " : "") + word.toUpperCase();
-  updateUISentence(currentSentence);
+  writer.addSignedWord(word);
+  lastCommitTime = Date.now();
+  renderSentenceUI();
   lastWordTime = Date.now();
   wordCandidate = null;
   wordAgreeCount = 0;
   if (chatInjectionEnabled) {
-    injectIntoChat(currentSentence);
+    injectIntoChat(writer.text);
   }
 }
 
 function commitWord() {
   if (currentWordBuffer.length === 0) return;
 
-  currentSentence += (currentSentence.length > 0 ? " " : "") + currentWordBuffer;
+  if (writer) {
+    writer.addSpelledWord(currentWordBuffer); // fingerspelled → conservative autocorrect
+    lastCommitTime = Date.now();
+  }
   currentWordBuffer = "";
 
-  updateUISentence(currentSentence);
+  renderSentenceUI();
   updateUIBuffer("");
 
-  if (chatInjectionEnabled) {
-    injectIntoChat(currentSentence);
+  if (chatInjectionEnabled && writer) {
+    injectIntoChat(writer.text);
   }
 }
 
 function appendSpace() {
+  // A SPACE sign just ends the current fingerspelled word — the assembler joins
+  // words with spaces itself, so there is no separate space to append.
   commitWord();
-  currentSentence += " ";
-  updateUISentence(currentSentence);
 }
 
 function handleBackspace() {
   if (currentWordBuffer.length > 0) {
     currentWordBuffer = currentWordBuffer.slice(0, -1);
     updateUIBuffer(currentWordBuffer);
-  } else if (currentSentence.length > 0) {
-    const words = currentSentence.trim().split(" ");
-    words.pop();
-    currentSentence = words.join(" ");
-    updateUISentence(currentSentence);
+  } else if (writer) {
+    writer.backspace(); // drops the last assembled word
+    renderSentenceUI();
   }
+}
+
+// Single place that pushes the writer's assembled text into the overlay.
+function renderSentenceUI() {
+  updateUISentence(writer ? writer.text : "");
 }
 
 // Injects translated sentence into Google Meet / Teams chat inputs
@@ -311,9 +372,9 @@ function createOverlayDOM() {
   sentencePlaceholder = document.getElementById("s2t-placeholder");
 
   document.getElementById("s2t-clear-btn").addEventListener("click", () => {
-    currentSentence = "";
+    if (writer) writer.clear();
     currentWordBuffer = "";
-    updateUISentence("");
+    renderSentenceUI();
     updateUIBuffer("");
   });
 

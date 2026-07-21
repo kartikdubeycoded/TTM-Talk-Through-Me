@@ -33,5 +33,19 @@
       "run_at": "document_end"
     }
   ],
-  "web_accessible_resources": []
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "writer.js",
+        "assembler.js",
+        "fusion.js"
+      ],
+      "matches": [
+        "*://meet.google.com/*",
+        "*://*.zoom.us/*",
+        "*://teams.microsoft.com/*",
+        "*://teams.live.com/*"
+      ]
+    }
+  ]
 }
