@@ -26,7 +26,7 @@ def split_csv(tmp_path):
 def test_load_split_parses_video_and_gloss(split_csv):
     recs = load_split(split_csv)
     assert len(recs) == 7
-    assert recs[0] == {"video": "a.mp4", "gloss": "HELLO"}
+    assert recs[0] == {"video": "a.mp4", "gloss": "HELLO", "participant": 1}
 
 
 def test_load_split_detects_alternate_column_names(tmp_path):
@@ -35,7 +35,7 @@ def test_load_split_detects_alternate_column_names(tmp_path):
     df = pd.DataFrame({"filename": ["x.mp4"], "label": ["YES"]})
     p = tmp_path / "s.csv"
     df.to_csv(p, index=False)
-    assert load_split(str(p)) == [{"video": "x.mp4", "gloss": "YES"}]
+    assert load_split(str(p)) == [{"video": "x.mp4", "gloss": "YES", "participant": None}]
 
 
 def test_load_split_raises_on_missing_columns(tmp_path):

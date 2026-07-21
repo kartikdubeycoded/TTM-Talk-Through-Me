@@ -20,6 +20,7 @@ import pandas as pd
 # ASL Citizen headers vary across releases; match by name, not position.
 VIDEO_COLS = ("video file", "video", "filename", "file")
 GLOSS_COLS = ("gloss", "label", "sign")
+PARTICIPANT_COLS = ("participant id", "participant", "signer", "signer id", "participant_id")
 
 
 def _pick_column(columns, candidates):
@@ -30,13 +31,28 @@ def _pick_column(columns, candidates):
     raise KeyError(f"none of {candidates} found in columns {list(columns)}")
 
 
+def _pick_optional(columns, candidates):
+    """Like _pick_column but returns None instead of raising when absent."""
+    lower = {str(c).lower().strip(): c for c in columns}
+    for cand in candidates:
+        if cand in lower:
+            return lower[cand]
+    return None
+
+
 def load_split(csv_path):
-    """Parse an ASL Citizen split CSV -> list of {'video','gloss'} records."""
+    """Parse an ASL Citizen split CSV -> list of {'video','gloss','participant'}.
+
+    'participant' is the signer id when the CSV has one (needed for honest
+    signer-disjoint train/val splits), else None.
+    """
     df = pd.read_csv(csv_path)
     vcol = _pick_column(df.columns, VIDEO_COLS)
     gcol = _pick_column(df.columns, GLOSS_COLS)
-    return [{"video": str(v), "gloss": str(g)}
-            for v, g in zip(df[vcol], df[gcol])]
+    pcol = _pick_optional(df.columns, PARTICIPANT_COLS)
+    parts = df[pcol] if pcol is not None else [None] * len(df)
+    return [{"video": str(v), "gloss": str(g), "participant": p}
+            for v, g, p in zip(df[vcol], df[gcol], parts)]
 
 
 def select_vocab(records, top_n):

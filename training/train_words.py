@@ -4,6 +4,7 @@ Reads data/words/ (from pipeline/ingest_words.py). The validation split is
 by PARTICIPANT — entire signers held out — because random-row splits flatter
 the score (today's capacity experiment proved it on the alphabet model).
 """
+import argparse
 import json
 import os
 
@@ -17,10 +18,16 @@ MODEL_PATH = os.path.join(MODEL_DIR, "words.h5")
 
 
 def main():
-    X = np.load(os.path.join(DATA_DIR, "X.npy"))
-    y = np.load(os.path.join(DATA_DIR, "y.npy"))
-    groups = np.load(os.path.join(DATA_DIR, "participants.npy"))
-    with open(os.path.join(DATA_DIR, "labels.json")) as f:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data-dir", default=DATA_DIR,
+                    help="dir with X.npy/y.npy/participants.npy/labels.json")
+    ap.add_argument("--model-path", default=MODEL_PATH, help="where to save the .h5")
+    args = ap.parse_args()
+
+    X = np.load(os.path.join(args.data_dir, "X.npy"))
+    y = np.load(os.path.join(args.data_dir, "y.npy"))
+    groups = np.load(os.path.join(args.data_dir, "participants.npy"))
+    with open(os.path.join(args.data_dir, "labels.json")) as f:
         vocab = json.load(f)
 
     print(f"{X.shape[0]} sequences, {X.shape[1]} frames x {X.shape[2]} features, "
@@ -73,9 +80,9 @@ def main():
     for w, acc, n in sorted(rows, key=lambda r: r[1]):
         print(f"{w:>10}  {acc:.2f}  (n={n})")
 
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    model.save(MODEL_PATH)
-    print(f"\nModel saved to {MODEL_PATH}")
+    os.makedirs(os.path.dirname(args.model_path) or ".", exist_ok=True)
+    model.save(args.model_path)
+    print(f"\nModel saved to {args.model_path}")
 
 
 if __name__ == "__main__":
